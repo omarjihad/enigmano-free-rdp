@@ -6,33 +6,27 @@ jobs:
     timeout-minutes: 360
     steps:
       - name: Enable RDP and Set Password
-        shell: powershell
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           net user runneradmin "P@ssw0rd123!"
           
-      - name: Install and Configure ngrok
-        shell: powershell
+      - name: Install ngrok via Chocolatey
         run: |
-          Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-          Expand-Archive ngrok.zip -DestinationPath .
-          .\ngrok.exe config add-authtoken ${{ secrets.NGROK_SHAHZAIB }}
+          choco install ngrok -y
           
-      - name: Start RDP Tunnel
-        shell: powershell
+      - name: Configure and Start Tunnel
         run: |
-          Start-Process -FilePath .\ngrok.exe -ArgumentList "tcp 3389" -NoNewWindow
+          ngrok config add-authtoken ${{ secrets.NGROK_SHAHZAIB }}
+          Start-Process -FilePath "ngrok" -ArgumentList "tcp 3389" -NoNewWindow
           Start-Sleep -Seconds 15
           $tunnel = Invoke-RestMethod http://localhost:4040/api/tunnels
-          $url = $tunnel.tunnels[0].public_url -replace 'tcp://', ''
           Write-Host "=================================================="
-          Write-Host "RDP HOST: $url"
+          Write-Host "RDP HOST: $($tunnel.tunnels[0].public_url -replace 'tcp://', '')"
           Write-Host "USERNAME: runneradmin"
           Write-Host "PASSWORD: P@ssw0rd123!"
           Write-Host "=================================================="
           
       - name: Keep Alive
-        shell: powershell
         run: |
           while ($true) { Start-Sleep -Seconds 3600 }
