@@ -1,3 +1,4 @@
+
 name: EnigMano Instance Deployment
 
 on:
@@ -18,80 +19,39 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
       
-    - name: System Information
-      run: |
-        Write-Host "=== ENIGMANO RDP DEPLOYMENT ===" -ForegroundColor Green
-        Write-Host "Instance Number: ${{ github.event.inputs.instance_number }}" -ForegroundColor Yellow
-        
     - name: Enable RDP
       run: |
-        Write-Host "Enabling Remote Desktop..." -ForegroundColor Green
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
         
     - name: Create User Account
       run: |
-        Write-Host "Setting up user account..." -ForegroundColor Green
         $Password = ConvertTo-SecureString "VanaRDP@2024!" -AsPlainText -Force
         Set-LocalUser -Name "runneradmin" -Password $Password
         Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
-        Write-Host "Username: runneradmin" -ForegroundColor Yellow
-        Write-Host "Password: VanaRDP@2024!" -ForegroundColor Yellow
         
     - name: Download and Setup ngrok
       run: |
-        Write-Host "Downloading ngrok..." -ForegroundColor Green
         Invoke-WebRequest -Uri "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip"
         Expand-Archive ngrok.zip -DestinationPath C:\ngrok
         
     - name: Configure ngrok
       run: |
-        Write-Host "Configuring ngrok..." -ForegroundColor Green
         C:\ngrok\ngrok.exe config add-authtoken "${{ secrets.NGROK_SHAHZAIB }}"
         
-    - name: Install Essential Software
+    - name: Start ngrok Tunnel (Diagnostic)
       run: |
-        Write-Host "Installing essential software..." -ForegroundColor Green
-        Set-ExecutionPolicy Bypass -Scope Process -Force
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-        
-        choco install googlechrome -y
-        choco install 7zip -y
-        choco install notepadplusplus -y
-        Write-Host "Software installation completed!" -ForegroundColor Green
-        
-    - name: Configure Chrome Extensions
-      run: |
-        Write-Host "Configuring Chrome with security extensions..." -ForegroundColor Green
-        $json = '{"extensions":{"settings":{"cjpalhdlnbpafiamejdnhcphjbkeiagm":{"state":1,"manifest":{"name":"uBlock Origin"}}}}}'
-        $ChromeDir = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default"
-        if (!(Test-Path $ChromeDir)) {
-          New-Item -ItemType Directory -Path $ChromeDir -Force
-        }
-        $json | Out-File -FilePath "$ChromeDir\Preferences" -Encoding UTF8
-        
-    - name: Setup Cloudflare WARP
-      run: |
-        Write-Host "Setting up Cloudflare WARP..." -ForegroundColor Green
-        try {
-          Invoke-WebRequest -Uri "https://1111-releases.cloudflareclient.com/windows/Cloudflare_WARP_Release-x64.msi" -OutFile "CloudflareWARP.msi"
-          Start-Process msiexec.exe -Wait -ArgumentList '/I CloudflareWARP.msi /quiet'
-          Write-Host "Cloudflare WARP installed successfully!" -ForegroundColor Green
-        } catch {
-          Write-Host "Cloudflare WARP installation failed, continuing..." -ForegroundColor Yellow
-        }
-        
-    - name: Start ngrok Tunnel
-      run: |
-        Write-Host "Starting ngrok tunnel..." -ForegroundColor Green
-        $process = Start-Process -FilePath "C:\ngrok\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden -PassThru
+        Write-Host "Starting ngrok..."
+        $proc = Start-Process -FilePath "C:\ngrok\ngrok.exe" -ArgumentList "tcp 3389" -RedirectStandardError "C:\ngrok_err.txt" -RedirectStandardOutput "C:\ngrok_out.txt" -WindowStyle Hidden -PassThru
         Start-Sleep -Seconds 10
-        if ($process.HasExited) {
-            Write-Host "ngrok died immediately! Check your authtoken." -ForegroundColor Red
+        
+        if ($proc.HasExited) {
+            Write-Host "=== NGROK DIED IMMEDIATELY ===" -ForegroundColor Red
+            Write-Host "Error log:" -ForegroundColor Yellow
+            Get-Content C:\ngrok_err.txt
         } else {
-            Write-Host "ngrok process is running." -ForegroundColor Green
+            Write-Host "=== NGROK IS RUNNING ===" -ForegroundColor Green
         }
         
     - name: Get Connection Details
@@ -121,29 +81,10 @@ jobs:
         }
         
         if (-not $success) {
-            Write-Host "Error getting ngrok details. API not accessible." -ForegroundColor Red
-            Write-Host "Check if your NGROK_SHAHZAIB secret is correct." -ForegroundColor Yellow
+            Write-Host "Error: Could not connect to ngrok API." -ForegroundColor Red
         }
         
     - name: Keep Session Alive
       run: |
         Write-Host "`n=== SESSION ACTIVE ===" -ForegroundColor Green
-        $counter = 0
-        while ($true) {
-          $counter++
-          Write-Host "Session active - Heartbeat #$counter ($(Get-Date))" -ForegroundColor Green
-          
-          try {
-            $ngrokStatus = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -TimeoutSec 5 -ErrorAction Stop
-            if ($ngrokStatus.tunnels.Count -gt 0) {
-              Write-Host "ngrok tunnel status: ACTIVE" -ForegroundColor Green
-            } else {
-              throw "No tunnels found"
-            }
-          } catch {
-            Write-Host "ngrok tunnel status: ERROR - Restarting..." -ForegroundColor Red
-            Start-Process -FilePath "C:\ngrok\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
-          }
-          
-          Start-Sleep -Seconds 60
-        }
+        while ($true) { Start-Sleep -Seconds 3600 }
