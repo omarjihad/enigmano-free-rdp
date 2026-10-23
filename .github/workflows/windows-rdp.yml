@@ -65,25 +65,12 @@ jobs:
     - name: Configure Chrome Extensions
       run: |
         Write-Host "Configuring Chrome with security extensions..." -ForegroundColor Green
-        $ChromePrefs = @'
-{
-  "extensions": {
-    "settings": {
-      "cjpalhdlnbpafiamejdnhcphjbkeiagm": {
-        "state": 1,
-        "manifest": {
-          "name": "uBlock Origin"
-        }
-      }
-    }
-  }
-}
-'@
+        $json = '{"extensions":{"settings":{"cjpalhdlnbpafiamejdnhcphjbkeiagm":{"state":1,"manifest":{"name":"uBlock Origin"}}}}}'
         $ChromeDir = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default"
         if (!(Test-Path $ChromeDir)) {
           New-Item -ItemType Directory -Path $ChromeDir -Force
         }
-        $ChromePrefs | Out-File -FilePath "$ChromeDir\Preferences" -Encoding UTF8
+        $json | Out-File -FilePath "$ChromeDir\Preferences" -Encoding UTF8
         
     - name: Setup Cloudflare WARP
       run: |
@@ -102,7 +89,7 @@ jobs:
         $process = Start-Process -FilePath "C:\ngrok\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden -PassThru
         Start-Sleep -Seconds 10
         if ($process.HasExited) {
-            Write-Host "ngrok died immediately!" -ForegroundColor Red
+            Write-Host "ngrok died immediately! Check your authtoken." -ForegroundColor Red
         } else {
             Write-Host "ngrok process is running." -ForegroundColor Green
         }
@@ -120,13 +107,11 @@ jobs:
                 $publicUrl = $ngrokApi.tunnels[0].public_url
                 $hostAddr = $publicUrl -replace "tcp://", ""
                 
-                Write-Host "╔══════════════════════════════════════╗" -ForegroundColor Cyan
-                Write-Host "║         ENIGMANO RDP ACCESS          ║" -ForegroundColor Cyan  
-                Write-Host "╠══════════════════════════════════════╣" -ForegroundColor Cyan
-                Write-Host "║ Host: $hostAddr" -ForegroundColor White
-                Write-Host "║ Username: runneradmin                ║" -ForegroundColor White
-                Write-Host "║ Password: VanaRDP@2024!              ║" -ForegroundColor White
-                Write-Host "╚══════════════════════════════════════╝" -ForegroundColor Cyan
+                Write-Host "==================================================" -ForegroundColor Cyan
+                Write-Host "RDP HOST: $hostAddr" -ForegroundColor White
+                Write-Host "USERNAME: runneradmin" -ForegroundColor White
+                Write-Host "PASSWORD: VanaRDP@2024!" -ForegroundColor White
+                Write-Host "==================================================" -ForegroundColor Cyan
                 $success = $true
             } catch {
                 $retryCount++
@@ -137,15 +122,12 @@ jobs:
         
         if (-not $success) {
             Write-Host "Error getting ngrok details. API not accessible." -ForegroundColor Red
-            Write-Host "Checking if secret NGROK_SHAHZAIB is set properly." -ForegroundColor Yellow
+            Write-Host "Check if your NGROK_SHAHZAIB secret is correct." -ForegroundColor Yellow
         }
         
     - name: Keep Session Alive
       run: |
         Write-Host "`n=== SESSION ACTIVE ===" -ForegroundColor Green
-        Write-Host "EnigMano RDP instance is now running!" -ForegroundColor Cyan
-        Write-Host "Do not close this window to maintain the connection." -ForegroundColor Red
-        
         $counter = 0
         while ($true) {
           $counter++
