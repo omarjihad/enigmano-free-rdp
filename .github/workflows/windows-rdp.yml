@@ -1,4 +1,3 @@
-
 name: EnigMano Instance Deployment
 
 on:
@@ -31,57 +30,44 @@ jobs:
         Set-LocalUser -Name "runneradmin" -Password $Password
         Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
         
-    - name: Download and Setup ngrok
+    - name: Download and Setup bore (Free Tunnel)
       run: |
-        Invoke-WebRequest -Uri "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip"
-        Expand-Archive ngrok.zip -DestinationPath C:\ngrok
+        Invoke-WebRequest -Uri "https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-pc-windows-msvc.zip" -OutFile "bore.zip"
+        Expand-Archive bore.zip -DestinationPath C:\bore
         
-    - name: Configure ngrok
+    - name: Start bore Tunnel
       run: |
-        C:\ngrok\ngrok.exe config add-authtoken "${{ secrets.NGROK_SHAHZAIB }}"
-        
-    - name: Start ngrok Tunnel (Diagnostic)
-      run: |
-        Write-Host "Starting ngrok..."
-        $proc = Start-Process -FilePath "C:\ngrok\ngrok.exe" -ArgumentList "tcp 3389" -RedirectStandardError "C:\ngrok_err.txt" -RedirectStandardOutput "C:\ngrok_out.txt" -WindowStyle Hidden -PassThru
+        Write-Host "Starting bore tunnel on port 3389..."
+        $proc = Start-Process -FilePath "C:\bore\bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "C:\bore_out.txt" -RedirectStandardError "C:\bore_err.txt" -WindowStyle Hidden -PassThru
         Start-Sleep -Seconds 10
         
         if ($proc.HasExited) {
-            Write-Host "=== NGROK DIED IMMEDIATELY ===" -ForegroundColor Red
-            Write-Host "Error log:" -ForegroundColor Yellow
-            Get-Content C:\ngrok_err.txt
+            Write-Host "=== BORE DIED IMMEDIATELY ===" -ForegroundColor Red
+            Get-Content C:\bore_err.txt
+            Get-Content C:\bore_out.txt
         } else {
-            Write-Host "=== NGROK IS RUNNING ===" -ForegroundColor Green
+            Write-Host "=== BORE IS RUNNING ===" -ForegroundColor Green
         }
         
     - name: Get Connection Details
       run: |
         Write-Host "`n=== CONNECTION DETAILS ===" -ForegroundColor Green
-        $maxRetries = 5
-        $retryCount = 0
-        $success = $false
+        Start-Sleep -Seconds 5
+        $output = Get-Content C:\bore_out.txt -Raw
         
-        while ($retryCount -lt $maxRetries -and -not $success) {
-            try {
-                $ngrokApi = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -ErrorAction Stop
-                $publicUrl = $ngrokApi.tunnels[0].public_url
-                $hostAddr = $publicUrl -replace "tcp://", ""
-                
-                Write-Host "==================================================" -ForegroundColor Cyan
-                Write-Host "RDP HOST: $hostAddr" -ForegroundColor White
-                Write-Host "USERNAME: runneradmin" -ForegroundColor White
-                Write-Host "PASSWORD: VanaRDP@2024!" -ForegroundColor White
-                Write-Host "==================================================" -ForegroundColor Cyan
-                $success = $true
-            } catch {
-                $retryCount++
-                Write-Host "Waiting for ngrok API... (Attempt $retryCount/$maxRetries)" -ForegroundColor Yellow
-                Start-Sleep -Seconds 5
-            }
-        }
-        
-        if (-not $success) {
-            Write-Host "Error: Could not connect to ngrok API." -ForegroundColor Red
+        if ($output -match "listening at (bore\.pub:\d+)") {
+            $hostAddr = $matches[1]
+            Write-Host "==================================================" -ForegroundColor Cyan
+            Write-Host "RDP HOST: $hostAddr" -ForegroundColor White
+            Write-Host "USERNAME: runneradmin" -ForegroundColor White
+            Write-Host "PASSWORD: VanaRDP@2024!" -ForegroundColor White
+            Write-Host "==================================================" -ForegroundColor Cyan
+        } else {
+            Write-Host "Error: Could not find bore.pub address in output." -ForegroundColor Red
+            Write-Host "--- STDOUT ---"
+            Get-Content C:\bore_out.txt
+            Write-Host "--- STDERR ---"
+            Get-Content C:\bore_err.txt
         }
         
     - name: Keep Session Alive
